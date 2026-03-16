@@ -65,8 +65,10 @@ class LoftQConfig:
             bits.
     """
 
-    loftq_bits: int = field(default=4, metadata={"help": "Quantization bits for LoftQ"})
-    loftq_iter: int = field(default=1, metadata={"help": "Alternating iterations for LoftQ"})
+    loftq_bits: int = field(default=4, metadata={
+                            "help": "Quantization bits for LoftQ"})
+    loftq_iter: int = field(default=1, metadata={
+                            "help": "Alternating iterations for LoftQ"})
 
 
 @dataclass
@@ -80,12 +82,14 @@ class ArrowConfig:
 
     top_k: int = field(
         default=3,
-        metadata={"help": "Number of top LoRA modules to combine in Arrow routing."},
+        metadata={
+            "help": "Number of top LoRA modules to combine in Arrow routing."},
     )
 
     router_temperature: float = field(
         default=1.0,
-        metadata={"help": "Softmax temperature for computing Arrow expert coefficients."},
+        metadata={
+            "help": "Softmax temperature for computing Arrow expert coefficients."},
     )
 
     use_gks: bool = field(
@@ -96,7 +100,8 @@ class ArrowConfig:
     task_adapter_names: Optional[list[str]] = field(
         default=None,
         init=False,
-        metadata={"help": "list of task-specific LoRA adapter names. It will be set in create_arrow_model()."},
+        metadata={
+            "help": "list of task-specific LoRA adapter names. It will be set in create_arrow_model()."},
     )
 
     gks_adapter_names: Optional[list[str]] = field(
@@ -109,7 +114,8 @@ class ArrowConfig:
 
     rng_seed: Optional[int] = field(
         default=None,
-        metadata={"help": "Optional RNG seed for reproducibility. If None, sampling is non-deterministic."},
+        metadata={
+            "help": "Optional RNG seed for reproducibility. If None, sampling is non-deterministic."},
     )
 
     def __post_init__(self):
@@ -151,16 +157,21 @@ class EvaConfig:
             are adjusted so that all LoRA gradients have the same scale regardless of their rank. Default is True.
     """
 
-    rho: float = field(default=2.0, metadata={"help": "Rho value for EVA redistribution"})
-    tau: float = field(default=0.99, metadata={"help": "Cosine similarity threshold for early stopping"})
-    use_label_mask: bool = field(default=True, metadata={"help": "Use label mask for EVA initialization"})
+    rho: float = field(default=2.0, metadata={
+                       "help": "Rho value for EVA redistribution"})
+    tau: float = field(default=0.99, metadata={
+                       "help": "Cosine similarity threshold for early stopping"})
+    use_label_mask: bool = field(default=True, metadata={
+                                 "help": "Use label mask for EVA initialization"})
     label_mask_value: int = field(
         default=-100, metadata={"help": "if use_label_mask=True the value to look for to mask out ignored tokens"}
     )
-    whiten: bool = field(default=False, metadata={"help": "Apply whitening to singular vectors"})
+    whiten: bool = field(default=False, metadata={
+                         "help": "Apply whitening to singular vectors"})
     adjust_scaling_factors: bool = field(
         default=True,
-        metadata={"help": "Adjust LoRA scaling factors after the rank redistribution"},
+        metadata={
+            "help": "Adjust LoRA scaling factors after the rank redistribution"},
     )
 
     def __post_init__(self):
@@ -231,7 +242,8 @@ class CordaConfig:
             )
         },
     )
-    verbose: bool = field(default=False, metadata={"help": "If true, prints the progress of CorDA initialization."})
+    verbose: bool = field(default=False, metadata={
+                          "help": "If true, prints the progress of CorDA initialization."})
     use_float16_for_covariance: bool = field(
         default=False,
         metadata={
@@ -402,13 +414,15 @@ class LoraConfig(PeftConfig):
     )
     exclude_modules: Optional[Union[list[str], str]] = field(
         default=None,
-        metadata={"help": "List of module names or regex expression of the module names to exclude from Lora."},
+        metadata={
+            "help": "List of module names or regex expression of the module names to exclude from Lora."},
     )
     lora_alpha: int = field(default=8, metadata={"help": "Lora alpha"})
     lora_dropout: float = field(default=0.0, metadata={"help": "Lora dropout"})
     fan_in_fan_out: bool = field(
         default=False,
-        metadata={"help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},
+        metadata={
+            "help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},
     )
     bias: Literal["none", "all", "lora_only"] = field(
         default="none", metadata={"help": "Bias type for Lora. Can be 'none', 'all' or 'lora_only'"}
@@ -421,6 +435,24 @@ class LoraConfig(PeftConfig):
                 " which sets the adapter scaling factor to `lora_alpha/math.sqrt(r)`, since it"
                 " was proven to work better. Otherwise, it will use the original default"
                 " value of `lora_alpha/r`."
+            )
+        },
+    )
+    use_orthogonal_loss: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to use orthogonal loss for LoRA. If set, then the `orthogonal_loss` will be added "
+                "to the loss function."
+            )
+        },
+    )
+    loss_coffe: Optional[float] = field(
+        default=0.01,
+        metadata={
+            "help": (
+                "The coefficient of orthogonal loss for LoRA. If set, then the `orthogonal_loss` will be added "
+                "to the loss function."
             )
         },
     )
@@ -632,7 +664,8 @@ class LoraConfig(PeftConfig):
         },
     )
     runtime_config: LoraRuntimeConfig = field(
-        default_factory=LoraRuntimeConfig, metadata={"help": "Runtime configurations"}
+        default_factory=LoraRuntimeConfig, metadata={
+            "help": "Runtime configurations"}
     )
     lora_bias: bool = field(
         default=False,
@@ -687,53 +720,65 @@ class LoraConfig(PeftConfig):
         super().__post_init__()
         self.peft_type = PeftType.LORA
         self.target_modules = (
-            set(self.target_modules) if isinstance(self.target_modules, list) else self.target_modules
+            set(self.target_modules) if isinstance(
+                self.target_modules, list) else self.target_modules
         )
         self.exclude_modules = (
-            set(self.exclude_modules) if isinstance(self.exclude_modules, list) else self.exclude_modules
+            set(self.exclude_modules) if isinstance(
+                self.exclude_modules, list) else self.exclude_modules
         )
 
         if self.ensure_weight_tying:
             self.modules_to_tie = None
 
         if isinstance(self.target_parameters, str):
-            raise TypeError("`target_parameters` must be a list of strings or None.")
+            raise TypeError(
+                "`target_parameters` must be a list of strings or None.")
 
         # if target_modules is a regex expression, then layers_to_transform should be None
         if isinstance(self.target_modules, str) and self.layers_to_transform is not None:
-            raise ValueError("`layers_to_transform` cannot be used when `target_modules` is a str.")
+            raise ValueError(
+                "`layers_to_transform` cannot be used when `target_modules` is a str.")
 
         # if target_modules is a regex expression, then layers_pattern should be None
         if isinstance(self.target_modules, str) and self.layers_pattern is not None:
-            raise ValueError("`layers_pattern` cannot be used when `target_modules` is a str.")
+            raise ValueError(
+                "`layers_pattern` cannot be used when `target_modules` is a str.")
 
         # check for layers_to_transform and layers_pattern
         if self.layers_pattern and not self.layers_to_transform:
-            raise ValueError("When `layers_pattern` is specified, `layers_to_transform` must also be specified. ")
+            raise ValueError(
+                "When `layers_pattern` is specified, `layers_to_transform` must also be specified. ")
 
         if self.use_dora and self.megatron_config:
-            raise ValueError("DoRA does not support megatron_core, please set `use_dora=False`.")
+            raise ValueError(
+                "DoRA does not support megatron_core, please set `use_dora=False`.")
 
         # handle init_lora_weights and loftq_config
         if self.init_lora_weights == "loftq":
             import importlib
 
             if not importlib.util.find_spec("scipy"):
-                raise ImportError("The required package 'scipy' is not installed. Please install it to continue.")
+                raise ImportError(
+                    "The required package 'scipy' is not installed. Please install it to continue.")
             if not self.loftq_config:
-                raise ValueError("`loftq_config` must be specified when `init_lora_weights` is 'loftq'.")
+                raise ValueError(
+                    "`loftq_config` must be specified when `init_lora_weights` is 'loftq'.")
             if not isinstance(self.loftq_config, dict):
                 # convert loftq_config to dict
                 self.loftq_config = vars(self.loftq_config)
         elif self.loftq_config:
             self.loftq_config = {}
-            warnings.warn("`loftq_config` specified but will be ignored when `init_lora_weights` is not 'loftq'.")
+            warnings.warn(
+                "`loftq_config` specified but will be ignored when `init_lora_weights` is not 'loftq'.")
 
         elif self.init_lora_weights == "eva" and self.eva_config is None:
-            warnings.warn("`init_lora_weights` is 'eva' but `eva_config` is not specified. Using default EVA config.")
+            warnings.warn(
+                "`init_lora_weights` is 'eva' but `eva_config` is not specified. Using default EVA config.")
             self.eva_config = EvaConfig()
         elif self.init_lora_weights != "eva" and self.eva_config is not None:
-            warnings.warn("`eva_config` specified but will be ignored when `init_lora_weights` is not 'eva'.")
+            warnings.warn(
+                "`eva_config` specified but will be ignored when `init_lora_weights` is not 'eva'.")
 
         elif self.init_lora_weights == "corda" and self.corda_config is None:
             warnings.warn(
@@ -741,7 +786,8 @@ class LoraConfig(PeftConfig):
             )
             self.corda_config = CordaConfig()
         elif self.init_lora_weights != "corda" and self.corda_config is not None:
-            warnings.warn("`corda_config` specified but will be ignored when `init_lora_weights` is not 'corda'.")
+            warnings.warn(
+                "`corda_config` specified but will be ignored when `init_lora_weights` is not 'corda'.")
 
         if self.lora_bias:
             if self.init_lora_weights not in (True, False):
@@ -750,10 +796,12 @@ class LoraConfig(PeftConfig):
                     f"init_lora_weights={self.init_lora_weights} instead."
                 )
             if self.use_dora:
-                raise ValueError("The argument lora_bias=True is not supported for DoRA, please pass use_dora=False")
+                raise ValueError(
+                    "The argument lora_bias=True is not supported for DoRA, please pass use_dora=False")
 
         if self.alora_invocation_tokens is not None and self.task_type != "CAUSAL_LM":
-            warnings.warn("aLoRA is currently only supported for CAUSAL_LM task.")
+            warnings.warn(
+                "aLoRA is currently only supported for CAUSAL_LM task.")
 
         # Using post training conversion of modified base weights to restore their initial values PiSSA/CorDA/OLoRA cannot
         # be correctly done when using rslora + rank_pattern/alpha_pattern. We can't really know if the user intends
@@ -763,7 +811,8 @@ class LoraConfig(PeftConfig):
             self.use_rslora
             and (self.rank_pattern or self.alpha_pattern)
             and (
-                (isinstance(self.init_lora_weights, str) and (self.init_lora_weights.startswith("pissa")))
+                (isinstance(self.init_lora_weights, str) and (
+                    self.init_lora_weights.startswith("pissa")))
                 or (self.init_lora_weights == "olora")
                 or (self.init_lora_weights == "corda")
             )
@@ -776,7 +825,8 @@ class LoraConfig(PeftConfig):
             )
             warnings.warn(msg)
 
-        self._custom_modules: Optional[dict[type[nn.Module], type[nn.Module]]] = None
+        self._custom_modules: Optional[dict[type[nn.Module],
+                                            type[nn.Module]]] = None
 
     def _register_custom_module(self, mapping: dict[type[nn.Module], type[nn.Module]]) -> None:
         """

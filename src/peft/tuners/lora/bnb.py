@@ -121,9 +121,11 @@ if is_bnb_available():
                 output = dequantize_bnb_weight(weight, state=state)
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     lora_data = self.get_delta_weight(active_adapter)
-                    w_data = output.to(lora_data.dtype).to(lora_data.device) + lora_data
+                    w_data = output.to(lora_data.dtype).to(
+                        lora_data.device) + lora_data
                 else:
-                    w_data = self.lora_variant[active_adapter].merge_safe(self, active_adapter, output)
+                    w_data = self.lora_variant[active_adapter].merge_safe(
+                        self, active_adapter, output)
 
                 if safe_merge and not torch.isfinite(w_data).all():
                     raise ValueError(
@@ -135,7 +137,8 @@ if is_bnb_available():
                 ).to(weight.device)
 
                 if self.lora_bias[active_adapter]:
-                    bias_data = self.get_base_layer().bias.data + self.lora_B[active_adapter].bias
+                    bias_data = self.get_base_layer().bias.data + \
+                        self.lora_B[active_adapter].bias
                     if safe_merge and not torch.isfinite(bias_data):
                         raise ValueError(
                             f"NaNs detected in the merged weights. The adapter {active_adapter} seems to be broken"
@@ -169,16 +172,19 @@ if is_bnb_available():
 
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     lora_data = self.get_delta_weight(active_adapter)
-                    w_data = output.to(lora_data.dtype).to(lora_data.device) - lora_data
+                    w_data = output.to(lora_data.dtype).to(
+                        lora_data.device) - lora_data
                 else:
-                    w_data = self.lora_variant[active_adapter].unmerge(self, active_adapter, output)
+                    w_data = self.lora_variant[active_adapter].unmerge(
+                        self, active_adapter, output)
 
                 self.get_base_layer().weight = bnb.nn.Int8Params(
                     w_data.to("cpu"), requires_grad=False, has_fp16_weights=weight.has_fp16_weights
                 ).to(weight.device)
 
                 if self.lora_bias[active_adapter]:
-                    self.get_base_layer().bias.data -= self.lora_B[active_adapter].bias
+                    self.get_base_layer(
+                    ).bias.data -= self.lora_B[active_adapter].bias
                 state.reset_grads()
 
         def get_delta_weight(self, adapter):
@@ -195,13 +201,16 @@ if is_bnb_available():
         ) -> torch.Tensor:
             # This is a special method that handles the case when users pass the argument `adapter_names`. This is an
             # extra argument that allows mixing different adapters in the same batch at inference time.
-            variant_kwargs = {k: kwargs.pop(k, None) for k in VARIANT_KWARG_KEYS}  # don't pass these to base_layer
+            # don't pass these to base_layer
+            variant_kwargs = {k: kwargs.pop(k, None)
+                              for k in VARIANT_KWARG_KEYS}
             result = self.base_layer(x, *args, **kwargs)
 
             unique_adapters = set(adapter_names)
             sub_batch_indices_list = []
             for adapter in unique_adapters:
-                sub_batch_indices_list.append([index for index, item in enumerate(adapter_names) if item == adapter])
+                sub_batch_indices_list.append(
+                    [index for index, item in enumerate(adapter_names) if item == adapter])
 
             for i, active_adapter in enumerate(unique_adapters):
                 if active_adapter == "__base__":
@@ -230,7 +239,8 @@ if is_bnb_available():
                 else:
                     alora_offsets = variant_kwargs.get("alora_offsets", None)
                     if alora_offsets is not None:
-                        variant_kwargs["alora_offsets"] = [alora_offsets[j] for j in sub_batch_indices_list[i]]
+                        variant_kwargs["alora_offsets"] = [
+                            alora_offsets[j] for j in sub_batch_indices_list[i]]
                     output = self.lora_variant[active_adapter].forward(
                         self,
                         active_adapter=active_adapter,
@@ -248,14 +258,18 @@ if is_bnb_available():
         def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
             self._check_forward_args(x, *args, **kwargs)
             adapter_names = kwargs.pop("adapter_names", None)
-            variant_kwargs = {k: kwargs.pop(k, None) for k in VARIANT_KWARG_KEYS}  # don't pass these to base_layer
-
+            # don't pass these to base_layer
+            variant_kwargs = {k: kwargs.pop(k, None)
+                              for k in VARIANT_KWARG_KEYS}
+            if self.use_orthogonal_loss:
+                self.orthogonal_losses = 0
             if self.disable_adapters:
                 if self.merged:
                     self.unmerge()
                 result = self.base_layer(x, *args, **kwargs)
             elif adapter_names is not None:
-                result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **variant_kwargs, **kwargs)
+                result = self._mixed_batch_forward(
+                    x, *args, adapter_names=adapter_names, **variant_kwargs, **kwargs)
             elif self.merged:
                 result = self.base_layer(x, *args, **kwargs)
             else:
@@ -277,6 +291,9 @@ if is_bnb_available():
                         output = lora_B(lora_A(dropout(x))) * scaling
                         if requires_conversion:
                             output = output.to(expected_dtype)
+                        if self.use_orthogonal_loss:
+                            self.orthogonal_losses += self.orthogonal_loss(
+                                active_adapter, self.training)
                         result = result + output
                     else:
                         result = self.lora_variant[active_adapter].forward(
@@ -401,12 +418,14 @@ if is_bnb_4bit_available():
                 weight = self.get_base_layer().weight
                 kwargs = weight.__dict__
 
-                output = dequantize_bnb_weight(weight, state=weight.quant_state)
+                output = dequantize_bnb_weight(
+                    weight, state=weight.quant_state)
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     lora_data = self.get_delta_weight(active_adapter)
                     w_data = output + lora_data
                 else:
-                    w_data = self.lora_variant[active_adapter].merge_safe(self, active_adapter, output)
+                    w_data = self.lora_variant[active_adapter].merge_safe(
+                        self, active_adapter, output)
 
                 if safe_merge and not torch.isfinite(w_data).all():
                     raise ValueError(
@@ -418,11 +437,14 @@ if is_bnb_4bit_available():
                 kwargs["requires_grad"] = False
                 kwargs.pop("data", None)
                 # torch.compile can introduce attributes preceded by '_', remove them
-                kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
-                self.get_base_layer().weight = bnb.nn.Params4bit(w_data.to("cpu"), **kwargs).to(weight.device)
+                kwargs = {k: v for k, v in kwargs.items()
+                          if not k.startswith("_")}
+                self.get_base_layer().weight = bnb.nn.Params4bit(
+                    w_data.to("cpu"), **kwargs).to(weight.device)
 
                 if self.lora_bias[active_adapter]:
-                    bias_data = self.get_base_layer().bias.data + self.lora_B[active_adapter].bias
+                    bias_data = self.get_base_layer().bias.data + \
+                        self.lora_B[active_adapter].bias
                     if safe_merge and not torch.isfinite(bias_data):
                         raise ValueError(
                             f"NaNs detected in the merged weights. The adapter {active_adapter} seems to be broken"
@@ -449,22 +471,26 @@ if is_bnb_4bit_available():
 
                 weight = self.get_base_layer().weight
                 kwargs = weight.__dict__
-                output = dequantize_bnb_weight(weight, state=weight.quant_state)
+                output = dequantize_bnb_weight(
+                    weight, state=weight.quant_state)
 
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     lora_data = self.get_delta_weight(active_adapter)
                     w_data = output - lora_data
                 else:
-                    w_data = self.lora_variant[active_adapter].unmerge(self, active_adapter, output)
+                    w_data = self.lora_variant[active_adapter].unmerge(
+                        self, active_adapter, output)
 
                 if "bnb_quantized" in kwargs:
                     kwargs["bnb_quantized"] = False
                 kwargs["requires_grad"] = False
                 kwargs.pop("data", None)
-                self.get_base_layer().weight = bnb.nn.Params4bit(w_data.to("cpu"), **kwargs).to(weight.device)
+                self.get_base_layer().weight = bnb.nn.Params4bit(
+                    w_data.to("cpu"), **kwargs).to(weight.device)
 
                 if self.lora_bias[active_adapter]:
-                    self.get_base_layer().bias.data -= self.lora_B[active_adapter].bias
+                    self.get_base_layer(
+                    ).bias.data -= self.lora_B[active_adapter].bias
 
         def get_delta_weight(self, adapter):
             return (
@@ -480,13 +506,16 @@ if is_bnb_4bit_available():
         ) -> torch.Tensor:
             # This is a special method that handles the case when users pass the argument `adapter_names`. This is an
             # extra argument that allows mixing different adapters in the same batch at inference time.
-            variant_kwargs = {k: kwargs.pop(k, None) for k in VARIANT_KWARG_KEYS}  # don't pass these to base_layer
+            # don't pass these to base_layer
+            variant_kwargs = {k: kwargs.pop(k, None)
+                              for k in VARIANT_KWARG_KEYS}
             result = self.base_layer(x, *args, **kwargs)
 
             unique_adapters = set(adapter_names)
             sub_batch_indices_list = []
             for adapter in unique_adapters:
-                sub_batch_indices_list.append([index for index, item in enumerate(adapter_names) if item == adapter])
+                sub_batch_indices_list.append(
+                    [index for index, item in enumerate(adapter_names) if item == adapter])
 
             for i, active_adapter in enumerate(unique_adapters):
                 if active_adapter == "__base__":
@@ -515,7 +544,8 @@ if is_bnb_4bit_available():
                 else:
                     alora_offsets = variant_kwargs.get("alora_offsets", None)
                     if alora_offsets is not None:
-                        variant_kwargs["alora_offsets"] = [alora_offsets[j] for j in sub_batch_indices_list[i]]
+                        variant_kwargs["alora_offsets"] = [
+                            alora_offsets[j] for j in sub_batch_indices_list[i]]
                     output = self.lora_variant[active_adapter].forward(
                         self,
                         active_adapter=active_adapter,
@@ -533,14 +563,18 @@ if is_bnb_4bit_available():
         def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
             self._check_forward_args(x, *args, **kwargs)
             adapter_names = kwargs.pop("adapter_names", None)
-            variant_kwargs = {k: kwargs.pop(k, None) for k in VARIANT_KWARG_KEYS}  # don't pass these to base_layer
-
+            # don't pass these to base_layer
+            variant_kwargs = {k: kwargs.pop(k, None)
+                              for k in VARIANT_KWARG_KEYS}
+            if self.use_orthogonal_loss:
+                self.orthogonal_losses = 0
             if self.disable_adapters:
                 if self.merged:
                     self.unmerge()
                 result = self.base_layer(x, *args, **kwargs)
             elif adapter_names is not None:
-                result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **variant_kwargs, **kwargs)
+                result = self._mixed_batch_forward(
+                    x, *args, adapter_names=adapter_names, **variant_kwargs, **kwargs)
             elif self.merged:
                 result = self.base_layer(x, *args, **kwargs)
             else:
@@ -569,6 +603,9 @@ if is_bnb_4bit_available():
                         output = lora_B(lora_A(dropout(x))) * scaling
                         if requires_conversion:
                             output = output.to(expected_dtype)
+                        if self.use_orthogonal_loss:
+                            self.orthogonal_losses += self.orthogonal_loss(
+                                active_adapter, self.training)
                         result = result + output
                     else:
                         result = self.lora_variant[active_adapter].forward(

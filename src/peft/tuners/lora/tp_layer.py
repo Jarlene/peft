@@ -17,7 +17,7 @@ import importlib
 import math
 import warnings
 from typing import Any, Optional, Union
-
+from torch import svd_lowrank
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -54,13 +54,15 @@ class LoraParallelLinear(nn.Module, LoraLayer):
         **kwargs,
     ):
         if lora_bias:
-            raise ValueError(f"{self.__class__.__name__} does not support lora_bias yet, set it to False")
+            raise ValueError(
+                f"{self.__class__.__name__} does not support lora_bias yet, set it to False")
 
         super().__init__()
         LoraLayer.__init__(self, base_layer=base_layer, **kwargs)
 
         if use_dora:
-            raise ValueError(f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
+            raise ValueError(
+                f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
 
         self.backend = backend
         self.is_parallel_a = isinstance(base_layer, backend.RowParallelLinear)
@@ -118,7 +120,8 @@ class LoraParallelLinear(nn.Module, LoraLayer):
         del kwargs["self"]
 
         if r <= 0:
-            raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
+            raise ValueError(
+                f"`r` should be a positive integer value but the value passed is {r}")
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         if lora_dropout > 0.0:
@@ -141,9 +144,11 @@ class LoraParallelLinear(nn.Module, LoraLayer):
                 init_method=init_method,
                 config=megatron_config,
             )
-            lora_b = nn.Linear(in_features=r, out_features=self.out_features, bias=False, dtype=torch.float32)
+            lora_b = nn.Linear(
+                in_features=r, out_features=self.out_features, bias=False, dtype=torch.float32)
         else:
-            lora_a = nn.Linear(in_features=self.in_features, out_features=r, bias=False, dtype=torch.float32)
+            lora_a = nn.Linear(in_features=self.in_features,
+                               out_features=r, bias=False, dtype=torch.float32)
             lora_b = self.backend.ColumnParallelLinear(
                 input_size=r,
                 output_size=self.out_features,
@@ -184,6 +189,28 @@ class LoraParallelLinear(nn.Module, LoraLayer):
             self.lora_variant[adapter_name].init(self, **kwargs)
 
         self.set_adapter(self.active_adapters, inference_mode=inference_mode)
+        if self.use_orthogonal_loss:
+            dtype = weight.dtype
+            if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
+                raise TypeError(
+                    "Please initialize PiSSA under float32, float16, or bfloat16. "
+                    "Subsequently, re-quantize the residual model to help minimize quantization errors."
+                )
+            weight = weight.to(torch.float32)
+            Vr, Sr, Ur = svd_lowrank(
+                weight.data, self.r[adapter_name], niter=2)
+            Uhr = Ur.t()
+            refer_lora_B = torch.diag(torch.sqrt(Sr)) @ Uhr
+            refer_lora_A = Vr @ torch.diag(torch.sqrt(Sr))
+            refer_lora_A.requires_grad = True
+            refer_lora_B.requires_grad = True
+
+            self.refer_lora_A = nn.ParameterDict({})
+            self.refer_lora_B = nn.ParameterDict({})
+            self.refer_lora_A.update(nn.ModuleDict(
+                {adapter_name: refer_lora_A}))
+            self.refer_lora_B.update(nn.ModuleDict(
+                {adapter_name: refer_lora_B}))
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         self._check_forward_args(x, *args, **kwargs)
@@ -196,7 +223,8 @@ class LoraParallelLinear(nn.Module, LoraLayer):
                 self.unmerge()
             result, bias = self.base_layer(x, *args, **kwargs)
         elif adapter_names is not None:
-            raise ValueError(f"{self.__class__.__name__} does not support mixed_batch_forward yet.")
+            raise ValueError(
+                f"{self.__class__.__name__} does not support mixed_batch_forward yet.")
         elif self.merged:
             result, bias = self.base_layer(x, *args, **kwargs)
         else:
@@ -283,7 +311,8 @@ class LoraParallelLinear(nn.Module, LoraLayer):
         # In case users wants to merge the adapter weights that are in
         # (b)float16 while being on CPU, we need to cast the weights to float32, perform the merge and then cast back to
         # (b)float16 because some CPUs have slow bf16/fp16 matmuls.
-        cast_to_fp32 = device.type == "cpu" and (dtype == torch.float16 or dtype == torch.bfloat16)
+        cast_to_fp32 = device.type == "cpu" and (
+            dtype == torch.float16 or dtype == torch.bfloat16)
 
         weight_A = self.lora_A[adapter].weight
         weight_B = self.lora_B[adapter].weight
@@ -292,7 +321,8 @@ class LoraParallelLinear(nn.Module, LoraLayer):
             weight_A = weight_A.float()
             weight_B = weight_B.float()
 
-        output_tensor = transpose(weight_B @ weight_A, self.fan_in_fan_out) * self.scaling[adapter]
+        output_tensor = transpose(
+            weight_B @ weight_A, self.fan_in_fan_out) * self.scaling[adapter]
 
         if cast_to_fp32:
             output_tensor = output_tensor.to(dtype=dtype)
@@ -328,13 +358,15 @@ def dispatch_megatron(
 
     if megatron_core and isinstance(
         target_base_layer,
-        (megatron_core.tensor_parallel.ColumnParallelLinear, megatron_core.tensor_parallel.RowParallelLinear),
+        (megatron_core.tensor_parallel.ColumnParallelLinear,
+         megatron_core.tensor_parallel.RowParallelLinear),
     ):
         megatron_kwargs = kwargs.copy()
         megatron_config = lora_config.megatron_config
         if isinstance(megatron_config, dict):
             transformer_config_class = megatron_core.transformer.transformer_config.TransformerConfig
-            megatron_config = transformer_config_class(**lora_config.megatron_config)
+            megatron_config = transformer_config_class(
+                **lora_config.megatron_config)
         megatron_kwargs["megatron_config"] = megatron_config
         if megatron_kwargs["fan_in_fan_out"]:
             warnings.warn(

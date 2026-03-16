@@ -43,7 +43,8 @@ class GPTQLoraLinear(torch.nn.Module, LoraLayer):
         LoraLayer.__init__(self, base_layer)
 
         if use_dora:
-            raise ValueError(f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
+            raise ValueError(
+                f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
 
         # self.base_layer and self.quant_linear_module are the same; we need the former for consistency and the latter
         # for backwards compatibility
@@ -82,7 +83,8 @@ class GPTQLoraLinear(torch.nn.Module, LoraLayer):
     def forward(self, x: torch.Tensor):
         # note: logic differs from default Linear because merging is not supported
         result = self.quant_linear_module(x)
-
+        if self.use_orthogonal_loss:
+            self.orthogonal_losses = 0
         if self.disable_adapters:
             return result
 
@@ -102,6 +104,9 @@ class GPTQLoraLinear(torch.nn.Module, LoraLayer):
 
             if active_adapter not in self.lora_variant:  # vanilla LoRA
                 result = result + lora_B(lora_A(dropout(x))) * scaling
+                if self.use_orthogonal_loss:
+                    self.orthogonal_losses += self.orthogonal_loss(
+                        active_adapter, self.training)
             else:
                 result = self.lora_variant[active_adapter].forward(
                     self,
