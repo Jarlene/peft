@@ -923,5 +923,6 @@ class LoraModel(BaseTuner):
                     continue
                 if hasattr(p, 'orthogonal_losses'):
                     reg_loss += p.orthogonal_losses * aux_coffe
+            setattr(outputs, "orthogonal_loss", reg_loss)
             outputs.loss += reg_loss
         return outputs
