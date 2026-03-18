@@ -919,7 +919,6 @@ class LoraModel(BaseTuner):
             aux_coffe = getattr(self.peft_config, "loss_coffe", 0.03)
             reg_loss = 0
             for n, p in self.model.named_modules():
-                # print(n)
                 if not hasattr(p, 'lora_A') or self.active_adapter not in n:
                     continue
                 if hasattr(p, 'orthogonal_losses'):

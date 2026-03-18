@@ -215,6 +215,8 @@ class LoraParallelLinear(nn.Module, LoraLayer):
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
+        if self.use_orthogonal_loss:
+            self.orthogonal_losses = 0
         # If weight is used for matrix multiplication here, the final aggregation operation of the original
         # parallel_linear layer will be missing, so we need to directly call its forward function to obtain the
         # output of the original parallel_linear layer.
@@ -239,6 +241,9 @@ class LoraParallelLinear(nn.Module, LoraLayer):
                 scaling = self.scaling[active_adapter]
                 x = self._cast_input_dtype(x, lora_A.weight.dtype)
                 result = result + lora_B(lora_A(dropout(x))) * scaling
+                if self.use_orthogonal_loss:
+                    self.orthogonal_losses += self.orthogonal_loss(
+                        active_adapter, self.training)
 
             result = result.to(torch_result_dtype)
         return result, bias
