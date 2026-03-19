@@ -37,10 +37,11 @@ class AwqLoraLinear(torch.nn.Module, LoraLayer):
         **kwargs,
     ):
         if use_dora:
-            raise ValueError(f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
+            raise ValueError(
+                f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
 
         super().__init__()
-        LoraLayer.__init__(self, base_layer)
+        LoraLayer.__init__(self, base_layer, **kwargs)
 
         # self.base_layer and self.quant_linear_module are the same; we need the former for consistency and the latter
         # for backwards compatibility
@@ -63,7 +64,8 @@ class AwqLoraLinear(torch.nn.Module, LoraLayer):
 
         if self.disable_adapters:
             return result
-
+        if self.use_orthogonal_loss:
+            self.orthogonal_losses = 0
         for active_adapter in self.active_adapters:
             if active_adapter not in self.lora_A.keys():
                 continue
@@ -82,6 +84,9 @@ class AwqLoraLinear(torch.nn.Module, LoraLayer):
                 output = output.to(expected_dtype)
             output = output * scaling
             result = result + output
+            if self.use_orthogonal_loss:
+                self.orthogonal_losses += self.orthogonal_loss(
+                    active_adapter, self.training)
         return result
 
     def __repr__(self) -> str:
@@ -107,7 +112,8 @@ def dispatch_awq(
         if isinstance(target_base_layer, WQLinear_GEMM):
             # Raise the error only at the dispatch level
             AUTOAWQ_MINIMUM_VERSION = packaging.version.parse("0.2.0")
-            version_autoawq = packaging.version.parse(importlib_metadata.version("autoawq"))
+            version_autoawq = packaging.version.parse(
+                importlib_metadata.version("autoawq"))
 
             if AUTOAWQ_MINIMUM_VERSION > version_autoawq:
                 raise ImportError(

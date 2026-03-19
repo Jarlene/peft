@@ -189,28 +189,6 @@ class LoraParallelLinear(nn.Module, LoraLayer):
             self.lora_variant[adapter_name].init(self, **kwargs)
 
         self.set_adapter(self.active_adapters, inference_mode=inference_mode)
-        if self.use_orthogonal_loss:
-            dtype = weight.dtype
-            if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
-                raise TypeError(
-                    "Please initialize PiSSA under float32, float16, or bfloat16. "
-                    "Subsequently, re-quantize the residual model to help minimize quantization errors."
-                )
-            weight = weight.to(torch.float32)
-            Vr, Sr, Ur = svd_lowrank(
-                weight.data, self.r[adapter_name], niter=2)
-            Uhr = Ur.t()
-            refer_lora_B = torch.diag(torch.sqrt(Sr)) @ Uhr
-            refer_lora_A = Vr @ torch.diag(torch.sqrt(Sr))
-            refer_lora_A.requires_grad = True
-            refer_lora_B.requires_grad = True
-
-            self.refer_lora_A = nn.ParameterDict({})
-            self.refer_lora_B = nn.ParameterDict({})
-            self.refer_lora_A.update(nn.ModuleDict(
-                {adapter_name: refer_lora_A}))
-            self.refer_lora_B.update(nn.ModuleDict(
-                {adapter_name: refer_lora_B}))
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any):
         self._check_forward_args(x, *args, **kwargs)

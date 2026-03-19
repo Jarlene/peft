@@ -291,9 +291,6 @@ if is_bnb_available():
                         output = lora_B(lora_A(dropout(x))) * scaling
                         if requires_conversion:
                             output = output.to(expected_dtype)
-                        if self.use_orthogonal_loss:
-                            self.orthogonal_losses += self.orthogonal_loss(
-                                active_adapter, self.training)
                         result = result + output
                     else:
                         result = self.lora_variant[active_adapter].forward(
@@ -306,7 +303,9 @@ if is_bnb_available():
                         )
                         if requires_conversion:
                             result = result.to(expected_dtype)
-
+                    if self.use_orthogonal_loss:
+                        self.orthogonal_losses += self.orthogonal_loss(
+                            active_adapter, self.training)
             return result
 
         def __repr__(self) -> str:
@@ -355,7 +354,7 @@ if is_bnb_4bit_available():
             **kwargs,
         ) -> None:
             super().__init__()
-            LoraLayer.__init__(self, base_layer)
+            LoraLayer.__init__(self, base_layer, **kwargs)
             self.fan_in_fan_out = False
 
             self._active_adapter = adapter_name
@@ -603,9 +602,6 @@ if is_bnb_4bit_available():
                         output = lora_B(lora_A(dropout(x))) * scaling
                         if requires_conversion:
                             output = output.to(expected_dtype)
-                        if self.use_orthogonal_loss:
-                            self.orthogonal_losses += self.orthogonal_loss(
-                                active_adapter, self.training)
                         result = result + output
                     else:
                         result = self.lora_variant[active_adapter].forward(
@@ -618,7 +614,9 @@ if is_bnb_4bit_available():
                         )
                         if requires_conversion:
                             result = result.to(expected_dtype)
-
+                    if self.use_orthogonal_loss:
+                        self.orthogonal_losses += self.orthogonal_loss(
+                            active_adapter, self.training)
             return result
 
         def __repr__(self) -> str:

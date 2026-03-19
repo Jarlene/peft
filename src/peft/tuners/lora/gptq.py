@@ -40,7 +40,7 @@ class GPTQLoraLinear(torch.nn.Module, LoraLayer):
         **kwargs,
     ):
         super().__init__()
-        LoraLayer.__init__(self, base_layer)
+        LoraLayer.__init__(self, base_layer,  **kwargs)
 
         if use_dora:
             raise ValueError(
@@ -87,7 +87,8 @@ class GPTQLoraLinear(torch.nn.Module, LoraLayer):
             self.orthogonal_losses = 0
         if self.disable_adapters:
             return result
-
+        if self.use_orthogonal_loss:
+            self.orthogonal_losses = 0
         lora_A_keys = self.lora_A.keys()
 
         for active_adapter in self.active_adapters:
@@ -116,6 +117,9 @@ class GPTQLoraLinear(torch.nn.Module, LoraLayer):
                 )
 
             result = result.to(torch_result_dtype)
+            if self.use_orthogonal_loss:
+                self.orthogonal_losses += self.orthogonal_losses.to(
+                    torch_result_dtype)
         return result
 
     def __repr__(self) -> str:

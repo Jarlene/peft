@@ -240,28 +240,6 @@ class LoraLayer(BaseTunerLayer):
             self.lora_variant[adapter_name].init(self, **kwargs)
 
         self.set_adapter(self.active_adapters, inference_mode=inference_mode)
-        if self.use_orthogonal_loss:
-            dtype = weight.dtype
-            if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
-                raise TypeError(
-                    "Please initialize PiSSA under float32, float16, or bfloat16. "
-                    "Subsequently, re-quantize the residual model to help minimize quantization errors."
-                )
-            weight = weight.to(torch.float32)
-            Vr, Sr, Ur = svd_lowrank(
-                weight.data, self.r[adapter_name], niter=2)
-            Uhr = Ur.t()
-            refer_lora_B = torch.diag(torch.sqrt(Sr)) @ Uhr
-            refer_lora_A = Vr @ torch.diag(torch.sqrt(Sr))
-            refer_lora_A.requires_grad = True
-            refer_lora_B.requires_grad = True
-
-            self.refer_lora_A = nn.ParameterDict({})
-            self.refer_lora_B = nn.ParameterDict({})
-            self.refer_lora_A.update(nn.ModuleDict(
-                {adapter_name: refer_lora_A}))
-            self.refer_lora_B.update(nn.ModuleDict(
-                {adapter_name: refer_lora_B}))
 
         # Check for adapters that were added or removed from the arrow_model.
         # The arrow model may be modified after creation by adding new experts
@@ -275,19 +253,16 @@ class LoraLayer(BaseTunerLayer):
                     self.lora_arrow[adapter].on_adapter_change(
                         self.lora_A, self.lora_B)
 
+    def get_delta_weight(self, active_adapter):
+        pass
+
     def orthogonal_loss(self, active_adapter, training: bool):
         if not training or not self.use_orthogonal_loss:
             return 0
         if active_adapter in self.lora_A.keys():
             base_weight = self.get_base_layer().weight
-            param_A = self.lora_A[active_adapter].weight
-            param_B = self.lora_B[active_adapter].weight
-            refer_lora_A = self.refer_lora_A[active_adapter]
-            refer_lora_B = self.refer_lora_B[active_adapter]
-            base_ref = refer_lora_A @ refer_lora_B
-            loss = torch.nn.functional.mse_loss(base_weight, base_ref)
-            loss += torch.abs(torch.mm(param_A, refer_lora_A.T)).mean()
-            loss += torch.abs(torch.mm(param_B, refer_lora_B.T)).mean()
+            delta_weight = self.get_delta_weight(active_adapter)
+            loss = torch.abs(torch.mm(base_weight, delta_weight)).mean()
             return loss
         else:
             return 0
@@ -1228,6 +1203,9 @@ class Embedding(nn.Module, LoraLayer):
                         **variant_kwargs,
                         **kwargs,
                     )
+                    if self.use_orthogonal_loss:
+                        self.orthogonal_losses += self.orthogonal_loss(
+                            active_adapter, self.training)
             result = result.to(torch_result_dtype)
 
         return result
@@ -1360,28 +1338,6 @@ class _ConvNd(nn.Module, LoraLayer):
             self.lora_variant[adapter_name].init(self, **kwargs)
 
         self.set_adapter(self.active_adapters, inference_mode=inference_mode)
-        if self.use_orthogonal_loss:
-            dtype = weight.dtype
-            if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
-                raise TypeError(
-                    "Please initialize PiSSA under float32, float16, or bfloat16. "
-                    "Subsequently, re-quantize the residual model to help minimize quantization errors."
-                )
-            weight = weight.to(torch.float32)
-            Vr, Sr, Ur = svd_lowrank(
-                weight.data, self.r[adapter_name], niter=2)
-            Uhr = Ur.t()
-            refer_lora_B = torch.diag(torch.sqrt(Sr)) @ Uhr
-            refer_lora_A = Vr @ torch.diag(torch.sqrt(Sr))
-            refer_lora_A.requires_grad = True
-            refer_lora_B.requires_grad = True
-
-            self.refer_lora_A = nn.ParameterDict({})
-            self.refer_lora_B = nn.ParameterDict({})
-            self.refer_lora_A.update(nn.ModuleDict(
-                {adapter_name: refer_lora_A}))
-            self.refer_lora_B.update(nn.ModuleDict(
-                {adapter_name: refer_lora_B}))
 
     def _get_dora_factor_view(self):
         return (-1,) + (1,) * (self._kernel_dim - 1)

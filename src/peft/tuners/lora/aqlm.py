@@ -19,7 +19,7 @@ import torch
 from peft.import_utils import is_aqlm_available
 from peft.tuners.lora.layer import LoraLayer
 from peft.tuners.tuners_utils import BaseTunerLayer
-
+from peft.utils.other import transpose
 
 if is_aqlm_available():
     from aqlm import QuantizedLinear
@@ -40,10 +40,11 @@ class AqlmLoraLinear(torch.nn.Module, LoraLayer):
         **kwargs,
     ):
         if use_dora:
-            raise ValueError(f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
+            raise ValueError(
+                f"{self.__class__.__name__} does not support DoRA yet, please set it to False")
 
         super().__init__()
-        LoraLayer.__init__(self, base_layer)
+        LoraLayer.__init__(self, base_layer, **kwargs)
 
         self._active_adapter = adapter_name
         self.update_layer(
@@ -57,12 +58,51 @@ class AqlmLoraLinear(torch.nn.Module, LoraLayer):
             lora_bias=lora_bias,
         )
 
+    def get_delta_weight(self, adapter) -> torch.Tensor:
+        """
+        Compute the delta weight for the given adapter.
+
+        Args:
+            adapter (str):
+                The name of the adapter for which the delta weight should be computed.
+        """
+        device = self.lora_B[adapter].weight.device
+        dtype = self.lora_B[adapter].weight.dtype
+
+        # In case users wants to merge the adapter weights that are in
+        # (b)float16 while being on CPU, we need to cast the weights to float32, perform the merge and then cast back to
+        # (b)float16 because some CPUs have slow bf16/fp16 matmuls.
+        cast_to_fp32 = device.type == "cpu" and (
+            dtype == torch.float16 or dtype == torch.bfloat16)
+
+        weight_A = self.lora_A[adapter].weight
+        weight_B = self.lora_B[adapter].weight
+
+        if cast_to_fp32:
+            weight_A = weight_A.float()
+            weight_B = weight_B.float()
+
+        output_tensor = transpose(
+            weight_B @ weight_A, False) * self.scaling[adapter]
+
+        if cast_to_fp32:
+            output_tensor = output_tensor.to(dtype=dtype)
+
+            # cast back the weights
+            self.lora_A[adapter].weight.data = weight_A.to(dtype)
+            self.lora_B[adapter].weight.data = weight_B.to(dtype)
+
+        return output_tensor
+
     def forward(self, x: torch.Tensor):
         # note: logic differs from default Linear because merging is not supported
         result = self.base_layer(x)
 
         if self.disable_adapters:
             return result
+
+        if self.use_orthogonal_loss:
+            self.orthogonal_losses = 0
 
         for active_adapter in self.active_adapters:
             if active_adapter not in self.lora_A.keys():
@@ -82,6 +122,9 @@ class AqlmLoraLinear(torch.nn.Module, LoraLayer):
                 output = output.to(expected_dtype)
             output = output * scaling
             result += output
+            if self.use_orthogonal_loss:
+                self.orthogonal_losses += self.orthogonal_loss(
+                    active_adapter, self.training)
         return result
 
     def __repr__(self) -> str:

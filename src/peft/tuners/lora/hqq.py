@@ -45,10 +45,11 @@ if is_hqq_available():
             **kwargs,
         ) -> None:
             if lora_bias:
-                raise ValueError(f"{self.__class__.__name__} does not support lora_bias yet, set it to False")
+                raise ValueError(
+                    f"{self.__class__.__name__} does not support lora_bias yet, set it to False")
 
             super().__init__()
-            LoraLayer.__init__(self, base_layer)
+            LoraLayer.__init__(self, base_layer, **kwargs)
             self.fan_in_fan_out = False
 
             self._active_adapter = adapter_name
@@ -94,21 +95,24 @@ if is_hqq_available():
                     continue
 
                 layer = self.get_base_layer()
-                quant_config = {**copy.deepcopy(layer.quant_config), "offload_meta": layer.offload_meta}
+                quant_config = {
+                    **copy.deepcopy(layer.quant_config), "offload_meta": layer.offload_meta}
 
                 output = layer.dequantize()
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     lora_data = self.get_delta_weight(active_adapter)
                     w_data = output + lora_data
                 else:
-                    w_data = self.lora_variant[active_adapter].merge_safe(self, active_adapter, output)
+                    w_data = self.lora_variant[active_adapter].merge_safe(
+                        self, active_adapter, output)
 
                 if safe_merge and not torch.isfinite(w_data).all():
                     raise ValueError(
                         f"NaNs detected in the merged weights. The adapter {active_adapter} seems to be broken"
                     )
 
-                new_hqq_layer = HQQLinear(None, quant_config, compute_dtype=layer.compute_dtype, device=layer.device)
+                new_hqq_layer = HQQLinear(
+                    None, quant_config, compute_dtype=layer.compute_dtype, device=layer.device)
                 quant_config.pop("offload_meta", None)
                 new_hqq_layer.quantize(w_data, **quant_config)
                 self.base_layer = new_hqq_layer
@@ -128,16 +132,20 @@ if is_hqq_available():
                     continue
 
                 layer = self.get_base_layer()
-                quant_config = {**copy.deepcopy(layer.quant_config), "offload_meta": layer.offload_meta}
+                quant_config = {
+                    **copy.deepcopy(layer.quant_config), "offload_meta": layer.offload_meta}
                 output = layer.dequantize()
 
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     lora_data = self.get_delta_weight(active_adapter)
-                    w_data = output.to(lora_data.dtype).to(lora_data.device) - lora_data
+                    w_data = output.to(lora_data.dtype).to(
+                        lora_data.device) - lora_data
                 else:
-                    w_data = self.lora_variant[active_adapter].unmerge(self, active_adapter, output)
+                    w_data = self.lora_variant[active_adapter].unmerge(
+                        self, active_adapter, output)
 
-                new_hqq_layer = HQQLinear(None, quant_config, compute_dtype=layer.compute_dtype, device=layer.device)
+                new_hqq_layer = HQQLinear(
+                    None, quant_config, compute_dtype=layer.compute_dtype, device=layer.device)
                 quant_config.pop("offload_meta", None)
                 new_hqq_layer.quantize(w_data, **quant_config)
                 self.base_layer = new_hqq_layer
@@ -161,7 +169,8 @@ if is_hqq_available():
             unique_adapters = set(adapter_names)
             sub_batch_indices_list = []
             for adapter in unique_adapters:
-                sub_batch_indices_list.append([index for index, item in enumerate(adapter_names) if item == adapter])
+                sub_batch_indices_list.append(
+                    [index for index, item in enumerate(adapter_names) if item == adapter])
 
             for i, active_adapter in enumerate(unique_adapters):
                 if active_adapter == "__base__":
@@ -192,13 +201,15 @@ if is_hqq_available():
         def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
             self._check_forward_args(x, *args, **kwargs)
             adapter_names = kwargs.pop("adapter_names", None)
-
+            if self.use_orthogonal_loss:
+                self.orthogonal_losses = 0
             if self.disable_adapters:
                 if self.merged:
                     self.unmerge()
                 result = self.base_layer(x, *args, **kwargs)
             elif adapter_names is not None:
-                result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
+                result = self._mixed_batch_forward(
+                    x, *args, adapter_names=adapter_names, **kwargs)
             elif self.merged:
                 result = self.base_layer(x, *args, **kwargs)
             else:
@@ -229,7 +240,9 @@ if is_hqq_available():
 
                     if requires_conversion:
                         result = result.to(expected_dtype)
-
+                    if self.use_orthogonal_loss:
+                        self.orthogonal_losses += self.orthogonal_loss(
+                            active_adapter, self.training)
             return result
 
         def __repr__(self) -> str:
