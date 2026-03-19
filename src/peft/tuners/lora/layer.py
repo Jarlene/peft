@@ -262,7 +262,8 @@ class LoraLayer(BaseTunerLayer):
         if active_adapter in self.lora_A.keys():
             base_weight = self.get_base_layer().weight
             delta_weight = self.get_delta_weight(active_adapter)
-            loss = torch.abs(torch.mm(base_weight, delta_weight)).mean()
+            loss = torch.abs(
+                torch.mm(base_weight.detach(), delta_weight)).mean()
             return loss
         else:
             return 0
